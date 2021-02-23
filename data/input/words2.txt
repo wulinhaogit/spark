@@ -1,0 +1,5 @@
+    hadoop spark # hadoop spark spark
+                                           mapreduce ! spark spark hive !
+                                           hive spark hadoop mapreduce spark %
+                                              spark hive sq1 sq1 spark hive , hive spark !
+                                           !  hdfs hdfs mapreduce mapreduce spark hive
