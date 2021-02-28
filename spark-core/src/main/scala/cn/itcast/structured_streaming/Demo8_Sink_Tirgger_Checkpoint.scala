@@ -56,7 +56,7 @@
         .format("console")
         .trigger(Trigger.Continuous("1 second"))
         .option("checkpointLocation","./ckp"+System.currentTimeMillis())  //设置 checkpoint 地址
-        .start()
+        .start().awaitTermination()
 
         //TODO 6.关闭资源
       spark.stop()
