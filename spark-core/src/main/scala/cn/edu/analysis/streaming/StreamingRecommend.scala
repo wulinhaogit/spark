@@ -1,12 +1,14 @@
 package cn.edu.analysis.streaming
 
+import java.util.Properties
+
 import cn.edu.bean.Answer
 import cn.edu.utils.RedisUtil
 import com.google.gson.Gson
 import org.apache.kafka.common.serialization.StringDeserializer
 import org.apache.spark.ml.recommendation.ALSModel
 import org.apache.spark.{SparkContext, streaming}
-import org.apache.spark.sql.{DataFrame, Dataset, Row, SparkSession}
+import org.apache.spark.sql._
 import org.apache.spark.sql.streaming.OutputMode
 import org.apache.spark.streaming.StreamingContext
 import org.apache.spark.streaming.kafka010.{ConsumerStrategies, KafkaUtils, LocationStrategies}
@@ -81,22 +83,43 @@ object StreamingRecommend {
         recommendDF.printSchema()
         /*
           root
-            |-- student_id: integer (nullable = false)
-            |-- recommendations: array (nullable = true)
+            |-- student_id: integer (nullable = false)  用户id
+            |-- recommendations: array (nullable = true) 推荐列表
             |    |-- element: struct (containsNull = true)
-            |    |    |-- question_id: integer (nullable = true)
-            |    |    |-- rating: float (nullable = true)
+            |    |    |-- question_id: integer (nullable = true)  题目id
+            |    |    |-- rating: float (nullable = true) 评分/推荐指数
          */
         recommendDF.show(false)
         /*
-        +----------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-        |student_id|recommendations                                                                                                                                                                                   |
-        +----------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
-        |12        |[[1225, 1.913353], [60, 1.1508352], [1562, 0.8117588], [984, 0.7853798], [1656, 0.7853798], [902, 0.7613853], [45, 0.7480976], [224, 0.7064658], [1083, 0.67618763], [198, 0.55118316]]           |
-        |14        |[[198, 0.9099754], [224, 0.72415733], [1318, 0.71683264], [201, 0.6653093], [1890, 0.5906269], [1225, 0.5726685], [60, 0.5707907], [1562, 0.56900674], [55, 0.56781083], [45, 0.56464404]]        |
+        +---------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+        |student_id 用户id    |recommendations            题目id,  分/推荐指数                                                                                                                                                                     |
+        +---------------------+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+        |12                   |[[1225, 1.913353], [60, 1.1508352], [1562, 0.8117588], [984, 0.7853798], [1656, 0.7853798], [902, 0.7613853], [45, 0.7480976], [224, 0.7064658], [1083, 0.67618763], [198, 0.55118316]]           |
+        |14                   |[[198, 0.9099754], [224, 0.72415733], [1318, 0.71683264], [201, 0.6653093], [1890, 0.5906269], [1225, 0.5726685], [60, 0.5707907], [1562, 0.56900674], [55, 0.56781083], [45, 0.56464404]]        |
          */
 
+
+        //处理推荐结果: 取出用户id和题目id:  拼接成字符串: "id1,id2,...
+        val recommendResultDF = recommendDF.as[(Int, Array[(Int, Float)])].map(t => {
+          val studentIdStr = "学生ID_" + t._1
+          val questionIdStr = t._2.map("题目_" + _._1).mkString(",")
+          (studentIdStr, questionIdStr)
+        }).toDF("student_id", "recommendations")
+
+        //将answerDF和recommendResultDF  进行 join
+        val allInfoDF = answerDF.join(recommendResultDF,"student_id")
+
         //===4.输出结果到mysql
+        if (allInfoDF.count()>0){
+          val properties = new  Properties()
+          properties.setProperty("user","root")
+          properties.setProperty("password","root")
+          allInfoDF.write.mode(SaveMode.Append).jdbc(
+            "jdbc:mysql://localhost:3306/sys?useUnicode=true&characterEncoding=utf-8&useSSL=false",
+            "t_recommended",
+            properties
+          )
+        }
 
         // 关闭redis连接
         jedis.close()
